@@ -76,6 +76,8 @@ private:
     RT_TASK th_openComRobot;
     RT_TASK th_startRobot;
     RT_TASK th_move;
+    RT_TASK th_wdUpdate;
+    RT_TASK th_batteryUpdate;
     
     /**********************************************************************/
     /* Mutex                                                              */

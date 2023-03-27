@@ -26,6 +26,8 @@
 #define PRIORITY_TRECEIVEFROMMON 25
 #define PRIORITY_TSTARTROBOT 20
 #define PRIORITY_TCAMERA 21
+#define PRIORITY_TBATTERYUPDATE 20
+#define PRIORITY_TWDUPDATE 21
 int lostCount = 0;
 int wd = 0;
 int gbl = 0;
@@ -125,6 +127,14 @@ void Tasks::Init() {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+    if (err = rt_task_create(&th_wdUpdate, "th_wdUpdate", 0, PRIORITY_TWDUPDATE, 0)) {
+        cerr << "Error task create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_task_create(&th_batteryUpdate, "th_batteryUpdate", 0, PRIORITY_TBATTERYUPDATE, 0)) {
+        cerr << "Error task create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
     cout << "Tasks created successfully" << endl << flush;
 
     /**************************************************************************************/
@@ -166,6 +176,14 @@ void Tasks::Run() {
         exit(EXIT_FAILURE);
     }
     if (err = rt_task_start(&th_move, (void(*)(void*)) & Tasks::MoveTask, this)) {
+        cerr << "Error task start: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_task_start(&th_wdUpdate, (void(*)(void*)) & Tasks::ReloadWdTask, this)) {
+        cerr << "Error task start: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_task_start(&th_batteryUpdate, (void(*)(void*)) & Tasks::UpdateBattery, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -286,6 +304,7 @@ void Tasks::ReceiveFromMonTask(void *arg) {
             rt_mutex_release(&mutex_move);
         } else if (msgRcv->CompareID(MESSAGE_ROBOT_BATTERY_LEVEL)) {
             gbl = 1;
+            cout << "Message de la batterie recue " << endl << flush;
         }
         delete(msgRcv); // mus be deleted manually, no consumer
     }
@@ -352,14 +371,11 @@ void Tasks::StartRobotTask(void *arg) {
             cout << "Start robot with watchdog (" << endl << flush;
             rt_mutex_acquire(&mutex_robot, TM_INFINITE);
             msgSend = robot.Write(robot.StartWithWD());  
-            ReloadWdTask();
             rt_mutex_release(&mutex_robot);
             cout << msgSend->GetID();
             cout << ")" << endl;
         }
-        
-        UpdateBattery();
-        
+                
         cout << "Movement answer: " << msgSend->ToString() << endl << flush;
         WriteInQueue(&q_messageToMon, msgSend);  // msgS   end will be deleted by sendToMon
 
@@ -474,17 +490,22 @@ void Tasks::ReloadWdTask(void) {
 
     while (1) {
         rt_task_wait_period(NULL);
-        cout << "Periodic Reload wd update";
-        rt_mutex_acquire(&mutex_robot, TM_INFINITE);
-        robot.Write(robot.ReloadWD());
-        rt_mutex_release(&mutex_robot);
-        cout << endl << flush;
+        rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
+        rs = robotStarted;
+        rt_mutex_release(&mutex_robotStarted);
+        if(rs == 1){
+            cout << "Periodic Reload wd update";
+            rt_mutex_acquire(&mutex_robot, TM_INFINITE);
+            robot.Write(robot.ReloadWD());
+            rt_mutex_release(&mutex_robot);
+            cout << endl << flush;
+        }
     }
 }
 
 void Tasks::UpdateBattery(void) {    
     cout << "Start Get Battery Level " << __PRETTY_FUNCTION__ << endl << flush;
-    
+    int rs;
     /**************************************************************************************/
     /* The task starts here                                                               */
     /**************************************************************************************/
@@ -492,7 +513,10 @@ void Tasks::UpdateBattery(void) {
     
     while (1) {
         rt_task_wait_period(NULL);
-        if (gbl == 1) {
+        rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
+        rs = robotStarted;
+        rt_mutex_release(&mutex_robotStarted);
+        if (gbl == 1 && rs == 1) {
             cout << "Periodic get battery level update" << endl << flush;
             rt_mutex_acquire(&mutex_robot, TM_INFINITE);
             MessageBattery * msg;
