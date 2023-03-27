@@ -132,6 +132,10 @@ private:
      */
     void MoveTask(void *arg);
     
+    void CheckCount(Message *msg);
+    void ReloadWdTask(void);
+    void UpdateBattery(void);
+    
     /**********************************************************************/
     /* Queue services                                                     */
     /**********************************************************************/
