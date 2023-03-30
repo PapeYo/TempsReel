@@ -302,7 +302,7 @@ void Tasks::ReceiveFromMonTask(void *arg) {
             rt_mutex_acquire(&mutex_move, TM_INFINITE);
             move = msgRcv->GetID();
             rt_mutex_release(&mutex_move);
-        } else if (msgRcv->CompareID(MESSAGE_ROBOT_BATTERY_LEVEL)) {
+        } else if (msgRcv->CompareID(MESSAGE_ROBOT_BATTERY_GET)) {
             gbl = 1;
             cout << "Message de la batterie recue " << endl << flush;
         }
