@@ -64,6 +64,7 @@ private:
     /**********************************************************************/
     ComMonitor monitor;
     ComRobot robot;
+    Camera * camera;
     int robotStarted = 0;
     int move = MESSAGE_ROBOT_STOP;
     
@@ -78,6 +79,7 @@ private:
     RT_TASK th_move;
     RT_TASK th_wdUpdate;
     RT_TASK th_batteryUpdate;
+    RT_TASK th_openCamera;
     
     /**********************************************************************/
     /* Mutex                                                              */
@@ -137,6 +139,7 @@ private:
     void CheckCount(Message *msg);
     void ReloadWdTask(void);
     void UpdateBattery(void);
+    void GrabImage(void);
     
     /**********************************************************************/
     /* Queue services                                                     */

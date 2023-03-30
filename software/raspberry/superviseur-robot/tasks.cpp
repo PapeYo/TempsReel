@@ -31,6 +31,7 @@
 int lostCount = 0;
 int wd = 0;
 int gbl = 0;
+int grabImage = 0;
 /*
  * Some remarks:
  * 1- This program is mostly a template. It shows you how to create tasks, semaphore
@@ -57,6 +58,8 @@ int gbl = 0;
 void Tasks::Init() {
     int status;
     int err;
+    camera = new Camera(sm, 5);
+
 
     /**************************************************************************************/
     /* 	Mutex creation                                                                    */
@@ -135,6 +138,10 @@ void Tasks::Init() {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+    if (err = rt_task_create(&th_openCamera, "th_openCamera", 0, PRIORITY_TCAMERA, 0)) {
+        cerr << "Error task create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
     cout << "Tasks created successfully" << endl << flush;
 
     /**************************************************************************************/
@@ -184,6 +191,10 @@ void Tasks::Run() {
         exit(EXIT_FAILURE);
     }
     if (err = rt_task_start(&th_batteryUpdate, (void(*)(void*)) & Tasks::UpdateBattery, this)) {
+        cerr << "Error task start: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }
+    if (err = rt_task_start(&th_openCamera, (void(*)(void*)) & Tasks::GrabImage, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
@@ -305,6 +316,27 @@ void Tasks::ReceiveFromMonTask(void *arg) {
         } else if (msgRcv->CompareID(MESSAGE_ROBOT_BATTERY_GET)) {
             gbl = 1;
             cout << "Message de la batterie recue " << endl << flush;
+        }
+        else if (msgRcv->CompareID(MESSAGE_CAM_OPEN)) {
+            bool state = camera->Open();
+            if(state){
+                grabImage = 1;
+                
+            } else{
+                monitor.Write(new Message(MESSAGE_ANSWER_NACK));
+            }
+            
+            cout << "Message de camera open" << endl << flush;
+        }
+        else if (msgRcv->CompareID(MESSAGE_CAM_CLOSE)) {
+            camera->Close();
+            bool state = camera->IsOpen();
+            grabImage = 0;
+            if(!state){
+                monitor.Write(new Message(MESSAGE_ANSWER_ACK));
+            }
+            
+            cout << "Message de camera close" << endl << flush;
         }
         delete(msgRcv); // mus be deleted manually, no consumer
     }
@@ -524,6 +556,32 @@ void Tasks::UpdateBattery(void) {
             WriteInQueue(&q_messageToMon, msg);
             rt_mutex_release(&mutex_robot);
             cout << endl << flush;
+        }
+    }
+}
+
+void Tasks::GrabImage(void) {    
+    cout << "Start grabbing camera " << __PRETTY_FUNCTION__ << endl << flush;
+    int rs;
+    /**************************************************************************************/
+    /* The task starts here                                                               */
+    /**************************************************************************************/
+    rt_task_set_periodic(NULL, TM_NOW, 100000000);
+    
+    while (1) {
+        rt_task_wait_period(NULL);
+        if (grabImage == 1) {
+            try{
+                cout << "Periodic grabbing image update" << endl << flush;
+                MessageImg * msg = new MessageImg();
+                Img image = camera->Grab();
+                msg->SetID(MESSAGE_CAM_IMAGE);
+                msg->SetImage(&image);
+                WriteInQueue(&q_messageToMon, msg);
+                cout << endl << flush;
+            }catch( const cv::Exception & e ) {
+                cerr << e.what() << endl;
+            } 
         }
     }
 }
