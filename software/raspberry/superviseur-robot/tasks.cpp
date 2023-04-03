@@ -15,8 +15,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "tasks.h"
 #include <stdexcept>
+#include "tasks.h"
+
 
 // Déclaration des priorités des taches
 #define PRIORITY_TSERVER 30
@@ -32,6 +33,7 @@ int lostCount = 0;
 int wd = 0;
 int gbl = 0;
 int grabImage = 0;
+int arenaFound = 0;
 /*
  * Some remarks:
  * 1- This program is mostly a template. It shows you how to create tasks, semaphore
@@ -329,14 +331,29 @@ void Tasks::ReceiveFromMonTask(void *arg) {
             cout << "Message de camera open" << endl << flush;
         }
         else if (msgRcv->CompareID(MESSAGE_CAM_CLOSE)) {
-            camera->Close();
-            bool state = camera->IsOpen();
-            grabImage = 0;
-            if(!state){
-                monitor.Write(new Message(MESSAGE_ANSWER_ACK));
-            }
+            try{
+                camera->Close();
+                bool state = camera->IsOpen();
+                grabImage = 0;
+                if(!state){
+                    monitor.Write(new Message(MESSAGE_ANSWER_ACK));
+                }
+            }catch( const cv::Exception & e ) {
+                cerr << e.what() << endl;
+            } 
             
             cout << "Message de camera close" << endl << flush;
+        }
+        else if (msgRcv->CompareID(MESSAGE_CAM_ASK_ARENA)) {
+            grabImage = 2;
+            cout << "Message de camera ask arena" << endl << flush;
+        }
+        else if (msgRcv->CompareID(MESSAGE_CAM_ARENA_CONFIRM)) {
+            arenaFound = 1;
+            grabImage = 1;
+        }
+        else if (msgRcv->CompareID(MESSAGE_CAM_ARENA_INFIRM)) {
+            grabImage = 1;
         }
         delete(msgRcv); // mus be deleted manually, no consumer
     }
@@ -551,8 +568,10 @@ void Tasks::UpdateBattery(void) {
         if (gbl == 1 && rs == 1) {
             cout << "Periodic get battery level update" << endl << flush;
             rt_mutex_acquire(&mutex_robot, TM_INFINITE);
+            cout << "Periodic get battery 0000 level update" << endl << flush;
             MessageBattery * msg;
             msg = (MessageBattery*)robot.Write(new Message(MESSAGE_ROBOT_BATTERY_GET));
+            cout << "Periodic get battery 1111 level update" << endl << flush;
             WriteInQueue(&q_messageToMon, msg);
             rt_mutex_release(&mutex_robot);
             cout << endl << flush;
@@ -570,14 +589,52 @@ void Tasks::GrabImage(void) {
     
     while (1) {
         rt_task_wait_period(NULL);
-        if (grabImage == 1) {
-            try{
-                cout << "Periodic grabbing image update" << endl << flush;
-                MessageImg * msg = new MessageImg();
-                Img image = camera->Grab();
+        if(grabImage == 2){
+            MessageImg * msg = new MessageImg();
+            Img image = camera->Grab();
+            cout << "Message search arena" << endl << flush;
+            Arena arenaSearch = image.SearchArena();
+            if(arenaSearch.IsEmpty()){
+                cout << "Message arena not found" << endl << flush;
+                monitor.Write(new Message(MESSAGE_ANSWER_NACK));
+            }else{
+                arena = arenaSearch;
+                cout << "Message found arena" << endl << flush;
+                image.DrawArena(arena);
                 msg->SetID(MESSAGE_CAM_IMAGE);
                 msg->SetImage(&image);
                 WriteInQueue(&q_messageToMon, msg);
+                cout << endl << flush;
+            }
+        }
+        else if(grabImage == 1 && arenaFound == 1){
+            try{
+                cout << "Periodic grabbing image update" << endl << flush;
+                MessageImg * msg = new MessageImg();
+                cout << "Periodic 000 grabbing image with arena update" << endl << flush;
+                Img image = camera->Grab();
+                image.DrawArena(arena);
+                msg->SetID(MESSAGE_CAM_IMAGE);
+                cout << "Periodic 1111 grabbing image with arena  update" << endl << flush;
+                msg->SetImage(&image);
+                WriteInQueue(&q_messageToMon, msg);
+                cout << "Periodic 2222 grabbing image with arena  update" << endl << flush;
+                cout << endl << flush;
+            }catch( const cv::Exception & e ) {
+                cerr << e.what() << endl;
+            } 
+        }
+        else if (grabImage == 1) {
+            try{
+                cout << "Periodic grabbing image update" << endl << flush;
+                MessageImg * msg = new MessageImg();
+                cout << "Periodic 000 grabbing image update" << endl << flush;
+                Img image = camera->Grab();
+                msg->SetID(MESSAGE_CAM_IMAGE);
+                cout << "Periodic 1111 grabbing image update" << endl << flush;
+                msg->SetImage(&image);
+                WriteInQueue(&q_messageToMon, msg);
+                cout << "Periodic 2222 grabbing image update" << endl << flush;
                 cout << endl << flush;
             }catch( const cv::Exception & e ) {
                 cerr << e.what() << endl;
