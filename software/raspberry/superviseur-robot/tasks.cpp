@@ -34,6 +34,7 @@ int wd = 0;
 int gbl = 0;
 int grabImage = 0;
 int arenaFound = 0;
+int posRobot = 0;
 /*
  * Some remarks:
  * 1- This program is mostly a template. It shows you how to create tasks, semaphore
@@ -355,6 +356,12 @@ void Tasks::ReceiveFromMonTask(void *arg) {
         else if (msgRcv->CompareID(MESSAGE_CAM_ARENA_INFIRM)) {
             grabImage = 1;
         }
+        else if (msgRcv->CompareID(MESSAGE_CAM_POSITION_COMPUTE_START)) {
+            posRobot = 1;
+        }
+        else if (msgRcv->CompareID(MESSAGE_CAM_POSITION_COMPUTE_STOP)) {
+            posRobot = 0;
+        }
         delete(msgRcv); // mus be deleted manually, no consumer
     }
 }
@@ -614,6 +621,13 @@ void Tasks::GrabImage(void) {
                 cout << "Periodic 000 grabbing image with arena update" << endl << flush;
                 Img image = camera->Grab();
                 image.DrawArena(arena);
+                 if(posRobot == 1){
+                    std::list<Position> allPos = image.SearchRobot(arena);
+                    if(!allPos.empty()){
+                        Position pos = allPos.back();
+                        image.DrawRobot(pos);
+                    }
+                }
                 msg->SetID(MESSAGE_CAM_IMAGE);
                 cout << "Periodic 1111 grabbing image with arena  update" << endl << flush;
                 msg->SetImage(&image);
