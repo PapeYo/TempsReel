@@ -35,6 +35,7 @@ int gbl = 0;
 int grabImage = 0;
 int arenaFound = 0;
 int posRobot = 0;
+int lostMonitor = 0;
 /*
  * Some remarks:
  * 1- This program is mostly a template. It shows you how to create tasks, semaphore
@@ -294,11 +295,62 @@ void Tasks::ReceiveFromMonTask(void *arg) {
 
     while (1) {
         msgRcv = monitor.Read();
+        if(lostMonitor == 1){
+            rt_sem_p(&sem_serverOk, TM_INFINITE);
+            cout << "Received message from monitor activated" << endl << flush;
+            lostMonitor = 0;
+        }
         cout << "Rcv <= " << msgRcv->ToString() << endl << flush;
-
         if (msgRcv->CompareID(MESSAGE_MONITOR_LOST)) {
-            delete(msgRcv);
-            exit(-1);
+            try{
+                rt_mutex_acquire(&mutex_robot, TM_INFINITE);
+                robot.Write(new Message(MESSAGE_ROBOT_STOP));
+                rt_mutex_release(&mutex_robot);
+                
+            }catch( const cv::Exception & e ) {
+                cout << "00" << endl << flush;
+                cerr << e.what() << endl;
+            } 
+            try{
+                rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
+                robotStarted = 0;
+                rt_mutex_release(&mutex_robotStarted);
+                robot.Close();
+                robot.PowerOff();
+            }catch( const cv::Exception & e ) {
+                cout << "11" << endl << flush;
+                cerr << e.what() << endl;
+            } 
+            try{
+                rt_mutex_acquire(&mutex_monitor, TM_INFINITE);
+                monitor.Close();
+                
+                int status;
+                status = monitor.Open(SERVER_PORT);
+
+                cout << "Open server on port " << (SERVER_PORT) << " (" << status << ")" << endl;
+
+                if (status < 0) throw std::runtime_error {
+                    "Unable to start server on port " + std::to_string(SERVER_PORT)
+                };
+                
+                monitor.AcceptClient(); // Wait the monitor client
+                cout << "Rock'n'Roll baby, client accepted!" << endl << flush;
+                rt_sem_broadcast(&sem_serverOk);
+                
+                rt_mutex_release(&mutex_monitor);
+            }catch( const cv::Exception & e ) {
+                cout << "22" << endl << flush;
+                cerr << e.what() << endl;
+            } 
+            try{
+                camera->Close();
+            }catch( const cv::Exception & e ) {
+                cout << "33" << endl << flush;
+                cerr << e.what() << endl;
+            } 
+            lostMonitor = 1;
+            
         } else if (msgRcv->CompareID(MESSAGE_ROBOT_COM_OPEN)) {
             rt_sem_v(&sem_openComRobot);
         } else if (msgRcv->CompareID(MESSAGE_ROBOT_START_WITHOUT_WD)) {
